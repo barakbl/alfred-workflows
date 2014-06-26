@@ -1,4 +1,4 @@
 alfred-workflows
 ================
 
-Some workflow for Israelis :)
+Some workflows for Israelis :)
