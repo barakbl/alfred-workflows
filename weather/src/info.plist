@@ -1,0 +1,243 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>bundleid</key>
+	<string>com.alfredapp.ilwather</string>
+	<key>connections</key>
+	<dict>
+		<key>6C68D0BB-A89A-4FDD-BB99-B5A5B460646E</key>
+		<array/>
+	</dict>
+	<key>createdby</key>
+	<string>Barak Bloch</string>
+	<key>description</key>
+	<string>isreal Weather from IMS</string>
+	<key>disabled</key>
+	<false/>
+	<key>name</key>
+	<string>Isreal Weather</string>
+	<key>objects</key>
+	<array>
+		<dict>
+			<key>config</key>
+			<dict>
+				<key>argumenttype</key>
+				<integer>1</integer>
+				<key>escaping</key>
+				<integer>0</integer>
+				<key>keyword</key>
+				<string>ilweather</string>
+				<key>script</key>
+				<string>
+class weather {
+    const imsUrl = 'http://www.ims.gov.il/ims/PublicXML/';
+    private $file , $arr;
+
+    private $cities = array();
+    private $citiesEng = array();
+
+    private function getXml() {
+        $url =  self::imsUrl . $this-&gt;getFile();
+        return file_get_contents($url);
+    }
+
+    function getData($file) {
+
+        $this-&gt;setFile($file);
+        $xml = $this-&gt;getXml();
+        $arr = json_decode(json_encode((array) simplexml_load_string($xml)), 1);
+        $alfredArray = array();
+
+        foreach($arr['Location'] as $loc) {
+            $city = $loc['LocationMetaData']['LocationNameHeb'];
+            $cityEng = $loc['LocationMetaData']['LocationNameEng'];
+
+            $this-&gt;setCities($city);
+            $this-&gt;setCitiesEng($cityEng);
+
+            $data = array();
+            foreach ($loc['LocationData']['TimeUnitData'] as $TimeUnitData) {
+                foreach($TimeUnitData['Element'] as $elm) {
+                    switch($elm['ElementName']) {
+                    case 'Maximum temperature' :
+                        $maxTemp = $elm['ElementValue'];
+                        break;
+                    case 'Minimum temperature' :
+                        $minTemp = $elm['ElementValue'];
+                        break;
+                    }
+                }
+                $date = $TimeUnitData['Date'];
+                $alfredArray[$cityEng][$date]['city'] =  $city;
+                $alfredArray[$cityEng][$date]['values'] =
+                    array(
+                        'date' =&gt; $date,
+                        'minTemp' =&gt; $minTemp,
+                        'maxTemp' =&gt; $maxTemp);
+
+            }
+        }
+        $this-&gt;setArr($alfredArray);
+    }
+
+    public function setFile($file)
+    {
+        $this-&gt;file = $file;
+    }
+
+    public function getFile()
+    {
+        return $this-&gt;file;
+    }
+
+    public function setArr($arr)
+    {
+        $this-&gt;arr = $arr;
+    }
+
+    public function getArr()
+    {
+        return $this-&gt;arr;
+    }
+
+    public function getCityData($city) {
+
+    }
+
+    public function setCities($cities)
+    {
+        $this-&gt;cities[] = $cities;
+    }
+
+    public function getCities()
+    {
+        return $this-&gt;cities;
+    }
+
+    public function setCitiesEng($citiesEng)
+    {
+        $this-&gt;citiesEng[] = $citiesEng;
+    }
+
+    public function getCitiesEng()
+    {
+        return $this-&gt;citiesEng;
+    }
+
+    public function searchCity($q,$findAll = 0) {
+        if($findAll == 1) {
+            $matches = $this-&gt;getCitiesEng();
+        } else {
+            $matches = preg_grep('/'.$q.'/',$this-&gt;getCitiesEng());
+            if(empty($matches)) {
+                $matches = preg_grep('/'.$q.'/',$this-&gt;getCities());
+            }
+        }
+
+
+        $items = array();
+        if(!empty($matches)) {
+            foreach($matches as $item) {
+                $data = $this-&gt;getCityDataByName($item);
+                $tommorow = array_slice($data,0,1);
+                foreach($tommorow as $date =&gt; $value) {
+                   $subtitle = $date . ' ' . $value['values']['minTemp'] . '°-' . $value['values']['maxTemp'] .'°';
+
+                }
+
+                $items[] = array(
+                    'uid' =&gt; $item,
+                    'valid' =&gt; 'yes',
+                    'title' =&gt; $item,
+                    'subtitle' =&gt; $subtitle
+                );
+            }
+        }
+        return $items;
+    }
+
+    public function getCityDataByName($name) {
+        $arr = array();
+        foreach($this-&gt;getArr() as $cityEng =&gt; $data) {
+            if($cityEng == $name) {
+                return $data;
+            }
+        }
+    }
+    public function getAlfredXml($items = array()) {
+        $xml = "&lt;?xml version=\"1.0\"?&gt;\n";
+        $xml .= "&lt;items&gt;\n";
+
+        foreach($items as $item) {
+            $title = isset($item['title']) ? $item['title'] : '';
+            $subtitle = isset($item['subtitle']) ? $item['subtitle'] : '';
+            $xml .= "&lt;item&gt;\n";
+            $xml .= '&lt;item uid="'.$title.'" autocomplete="'.$title.'"&gt;' ."\n";
+            $xml .= '&lt;title&gt;'.$title.'&lt;/title&gt; ' ."\n";
+            $xml .= '&lt;subtitle&gt;'.$subtitle.'&lt;/subtitle&gt; ' ."\n";
+
+
+            $xml .= "&lt;/item&gt;\n";
+        }
+        $xml .= "&lt;/items&gt;\n";
+        $xml .= "&lt;/xml&gt;\n";
+        return $xml;
+    }
+}
+
+$weather = new weather($file);
+$weather-&gt;getData('isr_cities.xml');
+
+if(empty($argv[1])) {
+    $cities = $weather-&gt;searchCity('',1);
+} else {
+    $cities = $weather-&gt;searchCity($argv[1]);
+}
+
+echo $citiesXML = $weather-&gt;getAlfredXml($cities);
+
+//$all = $weather-&gt;getCityData('Tel Aviv');
+
+</string>
+				<key>title</key>
+				<string>Script Filter weather</string>
+				<key>type</key>
+				<integer>1</integer>
+				<key>withspace</key>
+				<true/>
+			</dict>
+			<key>type</key>
+			<string>alfred.workflow.input.scriptfilter</string>
+			<key>uid</key>
+			<string>6C68D0BB-A89A-4FDD-BB99-B5A5B460646E</string>
+			<key>version</key>
+			<integer>0</integer>
+		</dict>
+	</array>
+	<key>readme</key>
+	<string>Isreal Weather workflow for Alfred V2.
+
+Date from IMS - השירות המטאורולוגי הישראלי
+For questions, bug fixes etc, plea contact barak.bloch@gmail.com
+
+שימו לב: תוסף זה נבנה על ידי ברק בלוך, והוא ניתן ללא כל אחריות.
+כמו כן, הנתונים נאספים ממערכת הנתונים של השירות המטארולוגי הישראלי ובאדיבותם. אין לעשות שימוש בנתונים אלו שלא לפי תנאי השימוש כפי שמפורט באתר השירות המטאורולוגי.
+
+תוסף זה פותח בצורה עצמאית, בכל בעיה או שאלה ניתן לפנות אללי. תוסף זה אינו נתמך ואינו קשור לשירות המטאורולוגי הישראלי
+
+
+
+go vegan and have fun</string>
+	<key>uidata</key>
+	<dict>
+		<key>6C68D0BB-A89A-4FDD-BB99-B5A5B460646E</key>
+		<dict>
+			<key>ypos</key>
+			<real>60</real>
+		</dict>
+	</dict>
+	<key>webaddress</key>
+	<string>http://github.com/barakbl/</string>
+</dict>
+</plist>
